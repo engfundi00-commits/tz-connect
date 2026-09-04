@@ -1,0 +1,29 @@
+{
+  "name": "tz-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TZ Connect Wi-Fi Voucher & Network Management Platform",
+  "scripts": {
+    "dev": "pnpm --filter @tz/web dev",
+    "build": "pnpm --filter @tz/web build",
+    "start": "pnpm --filter @tz/web start",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @tz/web test:e2e",
+    "db:generate": "pnpm --filter @tz/database generate",
+    "db:migrate": "pnpm --filter @tz/database migrate",
+    "db:push": "pnpm --filter @tz/database push",
+    "db:seed": "pnpm --filter @tz/database seed",
+    "db:studio": "pnpm --filter @tz/database studio",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\""
+  },
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2"
+  }
+}

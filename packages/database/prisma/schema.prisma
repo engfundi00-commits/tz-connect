@@ -1,0 +1,603 @@
+// =====================================================
+// TZ Connect Wi-Fi Platform — Prisma Schema
+// =====================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  AGENT
+  NETWORK_OPERATOR
+  REPORT_VIEWER
+}
+
+enum CustomerStatus {
+  ACTIVE
+  BLOCKED
+  SUSPENDED
+}
+
+enum PackageStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum VoucherStatus {
+  GENERATED
+  AVAILABLE
+  RESERVED
+  SOLD
+  ACTIVE
+  EXPIRED
+  USED
+  DISABLED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  MPESA
+  AIRTEL_MONEY
+  MIXX_BY_YAS
+  HALOPESA
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum SessionStatus {
+  ACTIVE
+  ENDED
+  EXPIRED
+  DISCONNECTED
+}
+
+enum NetworkDeviceStatus {
+  ONLINE
+  OFFLINE
+  DEGRADED
+  UNKNOWN
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum alertType {
+  ROUTER_OFFLINE
+  AP_OFFLINE
+  SWITCH_OFFLINE
+  HIGH_CPU
+  HIGH_MEMORY
+  HIGH_BANDWIDTH
+  PAYMENT_FAILURE_SPIKE
+  ABNORMAL_SESSION
+  INTERNET_DOWN
+}
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum AuditActionType {
+  AUTH_LOGIN
+  AUTH_LOGOUT
+  AUTH_FAILED
+  VOUCHER_GENERATE
+  VOUCHER_BULK_GENERATE
+  VOUCHER_SALE
+  VOUCHER_DISABLE
+  VOUCHER_ACTIVATE
+  VOUCHER_CANCEL
+  CUSTOMER_CREATE
+  CUSTOMER_UPDATE
+  CUSTOMER_BLOCK
+  CUSTOMER_UNBLOCK
+  PACKAGE_CREATE
+  PACKAGE_UPDATE
+  PACKAGE_DELETE
+  PAYMENT_CREATE
+  PAYMENT_UPDATE
+  PAYMENT_WEBHOOK
+  ROUTER_CREATE
+  ROUTER_UPDATE
+  ROUTER_REBOOT
+  ROUTER_CONFIG_CHANGE
+  SWITCH_CREATE
+  SWITCH_UPDATE
+  AP_CREATE
+  AP_UPDATE
+  USER_CREATE
+  USER_UPDATE
+  USER_ROLE_CHANGE
+  SITE_CREATE
+  SITE_UPDATE
+  SETTINGS_UPDATE
+  REPORT_EXPORT
+}
+
+// =====================================================
+// ORGANIZATION & MULTI-SITE
+// =====================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sites     Site[]
+  packages  Package[]
+  users     User[]
+  customers Customer[]
+  payments  Payment[]
+  settings  OrganizationSetting[]
+}
+
+model OrganizationSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  value          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+}
+
+model Site {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  address        String?
+  status         NetworkDeviceStatus @default(UNKNOWN)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  routers      Router[]
+  switches     Switch[]
+  accessPoints AccessPoint[]
+  packages     Package[]
+  vouchers     Voucher[]
+  customers    Customer[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+// =====================================================
+// NETWORK DEVICES
+// =====================================================
+
+model Router {
+  id                String              @id @default(cuid())
+  siteId            String
+  site              Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name              String
+  identity          String?
+  host              String?
+  apiPort           Int?
+  apiSecurePort     Int?
+  username          String?
+  // Password is NEVER stored in plaintext. If stored, must be encrypted.
+  usernameEncrypted String?             @map("username_encrypted")
+  passwordEncrypted String?             @map("password_encrypted")
+  encryptionKeyId   String?
+  model             String?
+  firmware          String?
+  ipAddress         String?
+  macAddress        String?
+  status            NetworkDeviceStatus @default(UNKNOWN)
+  cpuUsage          Float?
+  memoryUsage       Float?
+  uptimeSeconds     BigInt?
+  version           String?
+  lastSeenAt        DateTime?
+  lastCheckedAt     DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  sessions VoucherSession[]
+  alerts   NetworkAlert[]
+
+  @@index([siteId])
+  @@index([status])
+}
+
+model Switch {
+  id         String              @id @default(cuid())
+  siteId     String
+  site       Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name       String
+  ipAddress  String?
+  macAddress String?
+  vendor     String?
+  model      String?
+  portCount  Int?
+  poeBudget  Float?
+  status     NetworkDeviceStatus @default(UNKNOWN)
+  lastSeenAt DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  accessPoints AccessPoint[]
+  alerts       NetworkAlert[]
+
+  @@index([siteId])
+}
+
+model AccessPoint {
+  id            String              @id @default(cuid())
+  siteId        String
+  site          Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  switchId      String?
+  switch        Switch?             @relation(fields: [switchId], references: [id], onDelete: SetNull)
+  name          String
+  ipAddress     String?
+  macAddress    String?
+  model         String?
+  vendor        String?
+  firmware      String?
+  status        NetworkDeviceStatus @default(UNKNOWN)
+  lastSeenAt    DateTime?
+  uptimeSeconds BigInt?
+  clientCount   Int?
+  bandwidthIn   BigInt?
+  bandwidthOut  BigInt?
+  controller    String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  alerts   NetworkAlert[]
+  sessions VoucherSession[]
+
+  @@index([siteId])
+  @@index([switchId])
+}
+
+// =====================================================
+// CUSTOMERS
+// =====================================================
+
+model Customer {
+  id              String         @id @default(cuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  siteId          String?
+  site            Site?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  fullName        String?
+  phoneNumber     String
+  phoneNormalized String
+  email           String?
+  status          CustomerStatus @default(ACTIVE)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  vouchers Voucher[]
+  payments Payment[]
+  sessions VoucherSession[]
+
+  @@unique([organizationId, phoneNormalized])
+  @@index([phoneNormalized])
+  @@index([status])
+}
+
+// =====================================================
+// PACKAGES
+// =====================================================
+
+model Package {
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  siteId          String?
+  site            Site?         @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  name            String
+  description     String?
+  price           Float
+  currency        String        @default("TZS")
+  durationSeconds Int
+  downloadMbps    Float?
+  uploadMbps      Float?
+  dataLimitBytes  BigInt?
+  deviceLimit     Int           @default(1)
+  status          PackageStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  vouchers Voucher[]
+  payments Payment[]
+
+  @@index([organizationId, status])
+  @@index([siteId])
+}
+
+// =====================================================
+// VOUCHERS
+// =====================================================
+
+model Voucher {
+  id               String        @id @default(cuid())
+  code             String        @unique
+  packageId        String
+  package          Package       @relation(fields: [packageId], references: [id])
+  siteId           String?
+  site             Site?         @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  customerId       String?
+  customer         Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  price            Float
+  currency         String        @default("TZS")
+  status           VoucherStatus @default(GENERATED)
+  generatedBy      String
+  soldBy           String?
+  paymentId        String?
+  payment          Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  generatedAt      DateTime      @default(now())
+  soldAt           DateTime?
+  activatedAt      DateTime?
+  expiresAt        DateTime?
+  disabledAt       DateTime?
+  disabledReason   String?
+  mikrotikUsername String
+  mikrotikProfile  String?
+  timeLimit        Int?
+  dataLimit        BigInt?
+  deviceLimit      Int?
+  password         String?
+
+  sessions VoucherSession[]
+
+  @@index([packageId])
+  @@index([siteId])
+  @@index([customerId])
+  @@index([status])
+  @@index([generatedAt])
+  @@index([soldAt])
+  @@index([expiresAt])
+}
+
+// =====================================================
+// PAYMENTS
+// =====================================================
+
+model Payment {
+  id                    String        @id @default(cuid())
+  organizationId        String
+  organization          Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  siteId                String?
+  provider              PaymentMethod
+  providerTransactionId String?
+  amount                Float
+  currency              String        @default("TZS")
+  phoneNumber           String?
+  packageId             String?
+  package               Package?      @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  customerId            String?
+  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status                PaymentStatus @default(PENDING)
+  reference             String?
+  rawMetadata           Json?
+  initiatedBy           String
+  initiatedAt           DateTime      @default(now())
+  completedAt           DateTime?
+  expiresAt             DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  vouchers Voucher[]
+
+  @@unique([provider, providerTransactionId])
+  @@index([organizationId, status])
+  @@index([provider, status])
+  @@index([packageId])
+}
+
+// =====================================================
+// VOUCHER SESSIONS (Hotspot sessions)
+// =====================================================
+
+model VoucherSession {
+  id              String        @id @default(cuid())
+  voucherId       String
+  voucher         Voucher       @relation(fields: [voucherId], references: [id])
+  routerId        String?
+  router          Router?       @relation(fields: [routerId], references: [id], onDelete: SetNull)
+  accessPointId   String?
+  accessPoint     AccessPoint?  @relation(fields: [accessPointId], references: [id], onDelete: SetNull)
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status          SessionStatus @default(ACTIVE)
+  ipAddress       String?
+  macAddress      String?
+  bytesUploaded   BigInt        @default(0)
+  bytesDownloaded BigInt        @default(0)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([voucherId])
+  @@index([routerId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+// =====================================================
+// NETWORK ALERTS
+// =====================================================
+
+model NetworkAlert {
+  id             String        @id @default(cuid())
+  siteId         String?
+  routerId       String?
+  router         Router?       @relation(fields: [routerId], references: [id], onDelete: Cascade)
+  accessPointId  String?
+  accessPoint    AccessPoint?  @relation(fields: [accessPointId], references: [id], onDelete: Cascade)
+  switchId       String?
+  type           alertType
+  severity       AlertSeverity @default(WARNING)
+  status         AlertStatus   @default(OPEN)
+  title          String
+  message        String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  resolvedAt     DateTime?
+  acknowledgedAt DateTime?
+  Switch         Switch?       @relation(fields: [switchId], references: [id])
+
+  @@index([status])
+  @@index([severity])
+  @@index([createdAt])
+  @@index([siteId])
+}
+
+// =====================================================
+// USERS & RBAC
+// =====================================================
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String       @unique
+  passwordHash   String
+  fullName       String?
+  phoneNumber    String?
+  role           UserRole     @default(REPORT_VIEWER)
+  siteId         String?
+  isActive       Boolean      @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@index([organizationId, role])
+}
+
+// =====================================================
+// NOTIFICATIONS (SMS / WhatsApp)
+// =====================================================
+
+model SMSMessage {
+  id                String             @id @default(cuid())
+  recipient         String
+  message           String
+  provider          String
+  providerMessageId String?
+  status            NotificationStatus @default(QUEUED)
+  error             String?
+  createdAt         DateTime           @default(now())
+  deliveredAt       DateTime?
+  updatedAt         DateTime           @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model WhatsAppMessage {
+  id                String             @id @default(cuid())
+  recipient         String
+  message           String
+  provider          String
+  providerMessageId String?
+  status            NotificationStatus @default(QUEUED)
+  error             String?
+  createdAt         DateTime           @default(now())
+  deliveredAt       DateTime?
+  updatedAt         DateTime           @updatedAt
+
+  @@index([status])
+}
+
+// =====================================================
+// AUDIT LOGS
+// =====================================================
+
+model AuditLog {
+  id             String          @id @default(cuid())
+  actorId        String?
+  actor          User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action         AuditActionType
+  entity         String?
+  entityId       String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  organizationId String?
+  createdAt      DateTime        @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@index([organizationId])
+}
+
+// =====================================================
+// BANDWIDTH USAGE (aggregated samples)
+// =====================================================
+
+model BandwidthUsage {
+  id            String   @id @default(cuid())
+  siteId        String?
+  routerId      String?
+  accessPointId String?
+  downloadBps   BigInt
+  uploadBps     BigInt
+  activeClients Int
+  sampleTime    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([siteId, sampleTime])
+  @@index([routerId, sampleTime])
+  @@index([sampleTime])
+}

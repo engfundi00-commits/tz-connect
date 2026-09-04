@@ -1,0 +1,59 @@
+# =====================================================
+# TZ Connect Wi-Fi Platform - .gitignore
+# =====================================================
+
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+
+# --- Environment / Secrets (never commit) ---
+.env
+.env.local
+.env.*.local
+.env.production
+!*.example
+!.env.example
+
+# --- Build outputs ---
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# --- Prisma ---
+packages/database/generated/
+packages/database/prisma/generated/
+
+# --- Logs ---
+*.log
+*.log.*
+.next-dev.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Testing / Playwright ---
+test-results/
+playwright-report/
+blob-report/
+
+# --- Misc ---
+*.zip
+*.tgz
+tmp/
+temp/
+
+# --- Unrelated legacy project (locked by process, excluded from commits) ---
+taasisizone/
+taasisizone_old/
