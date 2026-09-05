@@ -4,7 +4,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "./generated/client"
+  output   = "../generated/client"
 }
 
 datasource db {
@@ -53,6 +53,7 @@ enum PaymentMethod {
   AIRTEL_MONEY
   MIXX_BY_YAS
   HALOPESA
+  PAWA_PAY
   CASH
 }
 
@@ -64,6 +65,38 @@ enum PaymentStatus {
   CANCELLED
   EXPIRED
   REFUNDED
+}
+
+enum PaymentFulfilmentStatus {
+  NONE
+  LOCKED
+  ISSUING
+  DONE
+}
+
+enum PaymentWebhookVerificationResult {
+  /// Callback fully authenticated and genuine.
+  VERIFIED
+  /// Callback was structurally parseable but NOT authentic (forged /
+  /// tampered signature / schema-invalid). Never fulfils.
+  FORGED
+  /// Callback body could not be parsed (invalid JSON / wrong shape).
+  MALFORMED
+  /// Callback parsed but did not match the expected provider envelope.
+  SCHEMA_INVALID
+  /// Callback authenticity could not be established (official mechanisms
+  /// unconfirmed). Fail closed.
+  UNVERIFIED
+  /// Backwards-compatible fallback (pre-step-2 legacy values).
+  INVALID
+  UNVERIFIABLE
+}
+
+enum PaymentWebhookProcessingState {
+  RECEIVED
+  PROCESSED
+  REJECTED
+  ERROR
 }
 
 enum SessionStatus {
@@ -395,6 +428,7 @@ model Voucher {
 
   sessions VoucherSession[]
 
+  @@unique([paymentId])
   @@index([packageId])
   @@index([siteId])
   @@index([customerId])
@@ -423,6 +457,9 @@ model Payment {
   customerId            String?
   customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   status                PaymentStatus @default(PENDING)
+  // Durable fulfilment state: NONE → LOCKED → ISSUING → DONE.
+  // Used to make fulfilment resumable after process/database failure.
+  fulfilmentStatus      PaymentFulfilmentStatus @default(NONE)
   reference             String?
   rawMetadata           Json?
   initiatedBy           String
@@ -432,12 +469,45 @@ model Payment {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  vouchers Voucher[]
+  vouchers     Voucher[]
+  webhookEvents PaymentWebhookEvent[]
 
   @@unique([provider, providerTransactionId])
   @@index([organizationId, status])
   @@index([provider, status])
   @@index([packageId])
+}
+
+// =====================================================
+// PAYMENT WEBHOOK EVENTS
+// =====================================================
+
+model PaymentWebhookEvent {
+  id                    String                        @id @default(cuid())
+  provider              PaymentMethod
+  providerTransactionId String?
+  eventId               String?
+  paymentId             String?
+  payment               Payment?                      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  claimedStatus         PaymentStatus?
+  claimedAmount         Float?
+  claimedCurrency       String?
+  // SANITIZED payload only. Must NOT contain signatures,
+  // secrets, tokens or unnecessary PII.
+  payload               Json
+  verificationResult    PaymentWebhookVerificationResult
+  processingState       PaymentWebhookProcessingState @default(RECEIVED)
+  receivedAt            DateTime                      @default(now())
+  processedAt           DateTime?
+
+  // Duplicate/replay protection: an exact replay from the same
+  // provider for the same transaction and event id is rejected.
+  // (PostgreSQL treats NULLs as distinct, so events without an
+  // eventId rely on the guarded payment transition for dedup.)
+  @@unique([provider, providerTransactionId, eventId])
+  @@index([paymentId])
+  @@index([provider, processingState])
+  @@index([receivedAt])
 }
 
 // =====================================================
